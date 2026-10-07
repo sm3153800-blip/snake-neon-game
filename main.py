@@ -1,434 +1,240 @@
 import pygame
 import random
-import sys
 import math
-from collections import deque
+import sys
 
 pygame.init()
 pygame.font.init()
 
+# --- Config --------------------------------------------------------------
 WIDTH, HEIGHT = 960, 720
-CELL = 24
-GRID_W = WIDTH // CELL
-GRID_H = HEIGHT // CELL
+BOARD_MARGIN = 70
+BOARD_W = WIDTH - BOARD_MARGIN * 2
+BOARD_H = HEIGHT - BOARD_MARGIN * 2
+CELL = 20
+GRID_W = BOARD_W // CELL
+GRID_H = BOARD_H // CELL
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Neon Snake Worlds")
+pygame.display.set_caption("Neon Snake Retro")
 clock = pygame.time.Clock()
 
-# Fonts
-font_title = pygame.font.SysFont("arial", 52, bold=True)
-font_big = pygame.font.SysFont("arial", 32, bold=True)
-font_med = pygame.font.SysFont("arial", 24, bold=True)
-font_small = pygame.font.SysFont("arial", 17, bold=True)
-
+# --- Colors --------------------------------------------------------------
+BG = (3, 12, 9)
+BORDER = (20, 255, 90)
+GRID = (15, 38, 24)
+GREEN = (90, 255, 90)
+GREEN_DARK = (30, 180, 60)
+RED = (255, 70, 70)
+RED_DARK = (180, 30, 30)
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
+SHADOW = (0, 0, 0)
 
-WORLDS = [
-    {
-        "name": "Cyber Neon",
-        "bg": (8, 10, 22),
-        "grid": (28, 40, 58),
-        "head": (90, 255, 210),
-        "body": (30, 180, 160),
-        "tail": (10, 120, 100),
-        "food": (255, 70, 180),
-        "obstacle": (120, 50, 150),
-        "accent": (0, 255, 180),
-        "desc": "Futuristic digital maze"
-    },
-    {
-        "name": "Volcanic Rush",
-        "bg": (30, 18, 12),
-        "grid": (90, 40, 24),
-        "head": (255, 175, 60),
-        "body": (220, 110, 25),
-        "tail": (140, 65, 20),
-        "food": (255, 110, 210),
-        "obstacle": (120, 40, 25),
-        "accent": (255, 160, 50),
-        "desc": "Fiery hot arena"
-    },
-    {
-        "name": "Aqua Drift",
-        "bg": (8, 30, 45),
-        "grid": (22, 62, 90),
-        "head": (90, 255, 255),
-        "body": (40, 170, 210),
-        "tail": (10, 90, 120),
-        "food": (100, 255, 180),
-        "obstacle": (30, 80, 120),
-        "accent": (85, 220, 255),
-        "desc": "Balanced water lanes"
-    },
-    {
-        "name": "Void Orbit",
-        "bg": (12, 8, 25),
-        "grid": (42, 30, 60),
-        "head": (220, 130, 255),
-        "body": (150, 90, 210),
-        "tail": (90, 70, 160),
-        "food": (255, 100, 200),
-        "obstacle": (80, 40, 120),
-        "accent": (200, 110, 255),
-        "desc": "Asteroid field"
-    },
-]
+# --- Fonts ---------------------------------------------------------------
+font_gameover = pygame.font.Font(None, 120)
+font_score = pygame.font.Font(None, 90)
+font_small = pygame.font.Font(None, 38)
+font_button = pygame.font.Font(None, 44)
+
+# --- Helper --------------------------------------------------------------
+def clamp(v, lo, hi):
+    return max(lo, min(v, hi))
 
 
 class SnakeGame:
     def __init__(self):
-        self.state = "menu"
-        self.world_index = 0
-        self.menu_index = 0
-        self.reset_game()
-        self.menu_stars = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(110)]
+        self.state = "playing"
+        self.reset()
 
-    def reset_game(self):
-        self.snake = deque([
-            (GRID_W // 2, GRID_H // 2),
-            (GRID_W // 2 - 1, GRID_H // 2),
-            (GRID_W // 2 - 2, GRID_H // 2),
-        ])
+    def reset(self):
         self.direction = (1, 0)
-        self.next_direction = (1, 0)
+        self.next_dir = (1, 0)
+        self.snake = [(GRID_W // 2, GRID_H // 2), (GRID_W // 2 - 1, GRID_H // 2), (GRID_W // 2 - 2, GRID_H // 2)]
+        self.food = self.spawn_food()
         self.score = 0
-        self.level = 1
+        self.speed = 8
         self.tick = 0
         self.game_over = False
-        self.obstacles = []
-        self.food = self.spawn_food()
-        self.particles = []
-        self.generate_world_layout()
-        self.state = "playing"
-
-    def choose_world(self, index):
-        self.world_index = index % len(WORLDS)
-        self.menu_index = self.world_index
-
-    def generate_world_layout(self):
-        self.obstacles = []
-
-        if self.world_index == 0:
-            for x in range(5, GRID_W - 5, 8):
-                for y in range(2, GRID_H - 2, 7):
-                    if (x, y) not in self.snake and random.random() < 0.42:
-                        self.obstacles.append((x, y))
-        elif self.world_index == 1:
-            for i in range(0, GRID_W, 7):
-                for j in range(0, GRID_H, 6):
-                    if random.random() < 0.26 and (i, j) not in self.snake:
-                        self.obstacles.append((i, j))
-        elif self.world_index == 2:
-            for i in range(0, GRID_W, 10):
-                if i % 2 == 0:
-                    for j in range(1, GRID_H - 1, 3):
-                        if random.random() < 0.22:
-                            self.obstacles.append((i, j))
-        elif self.world_index == 3:
-            for _ in range(45):
-                x = random.randint(1, GRID_W - 2)
-                y = random.randint(1, GRID_H - 2)
-                if (x, y) not in self.snake:
-                    self.obstacles.append((x, y))
-
-        self.food = self.spawn_food()
 
     def spawn_food(self):
         while True:
             x = random.randint(1, GRID_W - 2)
             y = random.randint(1, GRID_H - 2)
-            if (x, y) not in self.snake and (x, y) not in self.obstacles:
+            if (x, y) not in self.snake:
                 return (x, y)
 
-    def create_particles(self, pos, count=16):
-        palette = WORLDS[self.world_index]
-        for _ in range(count):
-            angle = random.random() * math.tau
-            speed = random.uniform(1.5, 5)
-            self.particles.append({
-                "x": pos[0] * CELL + CELL / 2,
-                "y": pos[1] * CELL + CELL / 2,
-                "vx": math.cos(angle) * speed,
-                "vy": math.sin(angle) * speed,
-                "life": random.randint(20, 40),
-                "color": palette["food"],
-            })
+    def handle_input(self, key):
+        if key in (pygame.K_UP, pygame.K_w):
+            self.next_dir = (0, -1)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            self.next_dir = (0, 1)
+        elif key in (pygame.K_LEFT, pygame.K_a):
+            self.next_dir = (-1, 0)
+        elif key in (pygame.K_RIGHT, pygame.K_d):
+            self.next_dir = (1, 0)
 
-    def update_particles(self):
-        for p in self.particles[:]:
-            p["x"] += p["vx"]
-            p["y"] += p["vy"]
-            p["life"] -= 1
-            p["vx"] *= 0.98
-            p["vy"] *= 0.98
-            if p["life"] <= 0:
-                self.particles.remove(p)
+        if self.state == "gameover" and key == pygame.K_SPACE:
+            self.reset()
+            self.state = "playing"
 
     def update(self):
         if self.state != "playing":
             return
 
         self.tick += 1
-        speed = 10 + self.level
-        delay = max(5, 18 - speed)
-
-        if self.tick >= delay:
+        step = max(4, 10 - self.score // 4)
+        if self.tick >= step:
             self.tick = 0
-            if (self.next_direction[0], self.next_direction[1]) != (-self.direction[0], -self.direction[1]):
-                self.direction = self.next_direction
+            if (self.next_dir[0], self.next_dir[1]) != (-self.direction[0], -self.direction[1]):
+                self.direction = self.next_dir
 
             head_x, head_y = self.snake[0]
-            new_head = (head_x + self.direction[0], head_y + self.direction[1])
+            nx = head_x + self.direction[0]
+            ny = head_y + self.direction[1]
 
-            if new_head[0] < 0 or new_head[0] >= GRID_W or new_head[1] < 0 or new_head[1] >= GRID_H:
+            if nx < 0 or ny < 0 or nx >= GRID_W or ny >= GRID_H:
                 self.state = "gameover"
+                self.game_over = True
                 return
 
-            if new_head in self.snake:
+            if (nx, ny) in self.snake:
                 self.state = "gameover"
+                self.game_over = True
                 return
 
-            if new_head in self.obstacles:
-                self.state = "gameover"
-                return
+            self.snake.insert(0, (nx, ny))
 
-            self.snake.appendleft(new_head)
-
-            if new_head == self.food:
+            if (nx, ny) == self.food:
                 self.score += 1
-                self.level = 1 + self.score // 3
-                self.create_particles(new_head, 18)
                 self.food = self.spawn_food()
             else:
                 self.snake.pop()
 
-        self.update_particles()
+    def draw_board(self):
+        # background and glowing frame
+        screen.fill(BG)
 
-    def draw_background(self):
-        palette = WORLDS[self.world_index]
-        screen.fill(palette["bg"])
-        t = pygame.time.get_ticks() * 0.02
+        frame = pygame.Rect(BOARD_MARGIN - 18, BOARD_MARGIN - 18, BOARD_W + 36, BOARD_H + 36)
+        pygame.draw.rect(screen, BORDER, frame, 4, border_radius=16)
+        pygame.draw.rect(screen, BG, (BOARD_MARGIN, BOARD_MARGIN, BOARD_W, BOARD_H), border_radius=8)
 
-        if self.world_index == 0:
-            for i in range(12):
-                y = (i * 70 + (t * 18) % 70) % HEIGHT
-                pygame.draw.line(screen, palette["grid"], (0, y), (WIDTH, y), 2)
-        elif self.world_index == 1:
-            for i in range(14):
-                y = (i * 60 + (t * 12) % 60) % HEIGHT
-                pygame.draw.line(screen, palette["grid"], (0, y), (WIDTH, y), 3)
-        elif self.world_index == 2:
-            for i in range(15):
-                offset = int(math.sin(t + i) * 16)
-                pygame.draw.line(screen, palette["grid"], (0, i * 52 + offset), (WIDTH, i * 52 + offset), 2)
-        elif self.world_index == 3:
-            for i in range(70):
-                x = (i * 37 + (t * 10)) % WIDTH
-                y = (i * 23 + (t * 14)) % HEIGHT
-                radius = 1 + (i % 3)
-                pygame.draw.circle(screen, (255, 255, 255), (int(x), int(y)), radius)
+        # subtle neon glow around inner board
+        glow = pygame.Surface((BOARD_W, BOARD_H), pygame.SRCALPHA)
+        pygame.draw.rect(glow, (20, 255, 90, 20), glow.get_rect(), border_radius=8)
+        screen.blit(glow, (BOARD_MARGIN, BOARD_MARGIN))
 
-    def draw_grid(self):
-        palette = WORLDS[self.world_index]
-        for x in range(0, WIDTH, CELL):
-            pygame.draw.line(screen, palette["grid"], (x, 0), (x, HEIGHT), 1)
-        for y in range(0, HEIGHT, CELL):
-            pygame.draw.line(screen, palette["grid"], (0, y), (WIDTH, y), 1)
+        # grid pattern
+        for x in range(0, BOARD_W + 1, CELL):
+            pygame.draw.line(screen, GRID, (BOARD_MARGIN + x, BOARD_MARGIN), (BOARD_MARGIN + x, HEIGHT - BOARD_MARGIN), 1)
+        for y in range(0, BOARD_H + 1, CELL):
+            pygame.draw.line(screen, GRID, (BOARD_MARGIN, BOARD_MARGIN + y), (WIDTH - BOARD_MARGIN, BOARD_MARGIN + y), 1)
 
-    def draw_obstacles(self):
-        palette = WORLDS[self.world_index]
-        for x, y in self.obstacles:
-            rect = pygame.Rect(x * CELL + 2, y * CELL + 2, CELL - 4, CELL - 4)
-            pygame.draw.rect(screen, palette["obstacle"], rect, border_radius=5)
-            pygame.draw.rect(screen, palette["accent"], rect, 1, border_radius=5)
+        # draw food
+        fx = BOARD_MARGIN + self.food[0] * CELL + CELL // 2
+        fy = BOARD_MARGIN + self.food[1] * CELL + CELL // 2
+        pygame.draw.circle(screen, RED, (fx, fy), 7)
+        pygame.draw.circle(screen, (255, 130, 130), (fx, fy), 3)
 
-    def draw_food(self):
-        palette = WORLDS[self.world_index]
-        fx = self.food[0] * CELL + CELL // 2
-        fy = self.food[1] * CELL + CELL // 2
-        pulse = 8 + abs(math.sin(pygame.time.get_ticks() / 200)) * 4
-        pygame.draw.circle(screen, palette["food"], (int(fx), int(fy)), int(pulse), 3)
-        pygame.draw.circle(screen, palette["food"], (int(fx), int(fy)), 6)
-
-    def draw_snake(self):
-        palette = WORLDS[self.world_index]
-        body = list(self.snake)
-
-        for i, (x, y) in enumerate(body):
-            px = x * CELL + CELL // 2
-            py = y * CELL + CELL // 2
-            size = CELL - 5
-            glow = 8 if i == 0 else 5
+        # draw snake segments
+        for i, (x, y) in enumerate(self.snake):
+            px = BOARD_MARGIN + x * CELL + 2
+            py = BOARD_MARGIN + y * CELL + 2
+            rect = pygame.Rect(px, py, CELL - 4, CELL - 4)
+            color = GREEN if i == 0 else GREEN_DARK
+            pygame.draw.rect(screen, color, rect, border_radius=6)
+            pygame.draw.rect(screen, WHITE, rect, 1, border_radius=6)
 
             if i == 0:
-                head_color = palette["head"]
-                pygame.draw.circle(screen, head_color, (px, py), 13)
-                pygame.draw.circle(screen, (255, 255, 255), (px, py), 12, 2)
-
-                dx, dy = self.direction
-                perp_x = -dy
-                perp_y = dx
+                dir_x, dir_y = self.direction
                 eye_offset = 5
-                eye_l = 2.4
-                eye1 = (px + dx * eye_offset + perp_x * 4, py + dy * eye_offset + perp_y * 3)
-                eye2 = (px + dx * eye_offset - perp_x * 4, py + dy * eye_offset - perp_y * 3)
-                pygame.draw.circle(screen, (0, 0, 0), (int(eye1[0]), int(eye1[1])), 2)
-                pygame.draw.circle(screen, (0, 0, 0), (int(eye2[0]), int(eye2[1])), 2)
-            else:
-                color = palette["body"] if i < len(body) - 1 else palette["tail"]
-                rect = pygame.Rect(x * CELL + 2, y * CELL + 2, CELL - 4, CELL - 4)
-                pygame.draw.rect(screen, color, rect, border_radius=7)
-                pygame.draw.rect(screen, (255, 255, 255), rect, 1, border_radius=7)
-
-                if i == len(body) - 1:
-                    tail_x = x * CELL + CELL // 2
-                    tail_y = y * CELL + CELL // 2
-                    pygame.draw.circle(screen, palette["tail"], (tail_x, tail_y), 6)
-
-        # trailing glow around head
-        hx, hy = self.snake[0]
-        pygame.draw.circle(screen, palette["accent"], (hx * CELL + CELL // 2, hy * CELL + CELL // 2), 18, 2)
-
-    def draw_particles(self):
-        for p in self.particles:
-            pygame.draw.circle(screen, p["color"], (int(p["x"]), int(p["y"])), max(1, int(p["life"] / 12)))
-
-    def draw_hud(self):
-        palette = WORLDS[self.world_index]
-        score_text = font_med.render(f"Score: {self.score}", True, palette["accent"])
-        level_text = font_med.render(f"Level: {self.level}", True, palette["accent"])
-        world_text = font_small.render(WORLDS[self.world_index]["name"], True, palette["accent"])
-        screen.blit(score_text, (20, 18))
-        screen.blit(level_text, (20, 52))
-        screen.blit(world_text, (WIDTH - 200, 18))
+                eye1 = (
+                    px + CELL // 2 + dir_x * eye_offset + (-dir_y) * 4,
+                    py + CELL // 2 + dir_y * eye_offset + dir_x * 4,
+                )
+                eye2 = (
+                    px + CELL // 2 + dir_x * eye_offset - (-dir_y) * 4,
+                    py + CELL // 2 + dir_y * eye_offset - dir_x * 4,
+                )
+                pygame.draw.circle(screen, (20, 20, 20), (int(eye1[0]), int(eye1[1])), 2)
+                pygame.draw.circle(screen, (20, 20, 20), (int(eye2[0]), int(eye2[1])), 2)
 
     def draw_gameover(self):
-        palette = WORLDS[self.world_index]
+        # dark overlay to mimic reference image
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
+        overlay.fill((0, 0, 0, 155))
         screen.blit(overlay, (0, 0))
 
-        text = font_big.render("GAME OVER", True, palette["food"])
-        sub = font_med.render(f"Score: {self.score}   |   Level: {self.level}", True, palette["accent"])
-        tip = font_small.render("Press R to restart or M to return to the menu", True, WHITE)
-        screen.blit(text, (WIDTH // 2 - 120, HEIGHT // 2 - 90))
-        screen.blit(sub, (WIDTH // 2 - 150, HEIGHT // 2 - 20))
-        screen.blit(tip, (WIDTH // 2 - 200, HEIGHT // 2 + 40))
+        # big title "GAME OVER"
+        text = font_gameover.render("GAME OVER", True, RED)
+        text_shadow = font_gameover.render("GAME OVER", True, (180, 0, 0))
+        text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 130))
+        screen.blit(text_shadow, (text_rect.x + 6, text_rect.y + 6))
+        screen.blit(text, text_rect)
 
-    def draw_menu(self):
-        screen.fill((7, 8, 22))
+        # score label
+        score_label = font_small.render("FINAL SCORE", True, (140, 255, 140))
+        score_label_rect = score_label.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 10))
+        screen.blit(score_label, score_label_rect)
 
-        for x, y in self.menu_stars:
-            pygame.draw.circle(screen, (180, 180, 255), (x, y), 1)
+        # score digits glow green
+        score_val = f"{self.score:05d}"
+        score_text = font_score.render(score_val, True, GREEN)
+        score_rect = score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 85))
+        screen.blit(score_text, score_rect)
 
-        title = font_title.render("NEON SNAKE", True, (95, 255, 220))
-        screen.blit(title, (WIDTH // 2 - 220, 50))
+        # play again button
+        btn_x = WIDTH // 2 - 160
+        btn_y = HEIGHT // 2 + 170
+        btn_w = 320
+        btn_h = 62
+        btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        pygame.draw.rect(screen, (0, 0, 0), btn_rect, border_radius=10)
+        pygame.draw.rect(screen, GREEN, btn_rect, 3, border_radius=10)
+        btn_text = font_button.render("PLAY AGAIN", True, GREEN)
+        btn_text_rect = btn_text.get_rect(center=btn_rect.center)
+        screen.blit(btn_text, btn_text_rect)
 
-        subtitle = font_med.render("Choose a world", True, WHITE)
-        screen.blit(subtitle, (WIDTH // 2 - 110, 125))
+        # bottom note
+        note = font_small.render("PRESS SPACE TO RESTART", True, (120, 255, 120))
+        note_rect = note.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 245))
+        screen.blit(note, note_rect)
 
-        y = 200
-        for i, world in enumerate(WORLDS):
-            box = pygame.Rect(180, y, 600, 85)
-            active = i == self.menu_index
-            if active:
-                pygame.draw.rect(screen, world["accent"], box, 3, border_radius=18)
-                pygame.draw.rect(screen, (25, 25, 35), box, border_radius=18)
-            else:
-                pygame.draw.rect(screen, (18, 18, 30), box, border_radius=18)
-                pygame.draw.rect(screen, (80, 80, 99), box, 1, border_radius=18)
+        # small red dot at bottom like reference
+        pygame.draw.circle(screen, RED_DARK, (WIDTH // 2, HEIGHT - 90), 7)
 
-            name = font_big.render(world["name"], True, world["accent"] if active else (200, 200, 200))
-            desc = font_small.render(world["desc"], True, (220, 220, 220))
-            screen.blit(name, (220, y + 20))
-            screen.blit(desc, (220, y + 56))
-            y += 110
-
-        help_text = font_small.render("Arrow keys to move | Enter to play | Q to quit", True, (180, 255, 200))
-        screen.blit(help_text, (WIDTH // 2 - 250, HEIGHT - 60))
+    def draw(self):
+        if self.state == "playing":
+            self.draw_board()
+        else:
+            self.draw_board()
+            self.draw_gameover()
 
 
 def main():
     game = SnakeGame()
     running = True
-    paused = False
 
     while running:
         clock.tick(60)
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
-                if game.state == "menu":
-                    if event.key == pygame.K_UP:
-                        game.menu_index = (game.menu_index - 1) % len(WORLDS)
-                        game.world_index = game.menu_index
-                    elif event.key == pygame.K_DOWN:
-                        game.menu_index = (game.menu_index + 1) % len(WORLDS)
-                        game.world_index = game.menu_index
-                    elif event.key == pygame.K_RETURN:
-                        game.reset_game()
-                    elif event.key == pygame.K_q:
-                        running = False
-
+                if event.key == pygame.K_SPACE and game.state == "gameover":
+                    game.reset()
+                    game.state = "playing"
                 elif game.state == "playing":
-                    if event.key in (pygame.K_UP, pygame.K_w):
-                        game.next_direction = (0, -1)
-                    elif event.key in (pygame.K_DOWN, pygame.K_s):
-                        game.next_direction = (0, 1)
-                    elif event.key in (pygame.K_LEFT, pygame.K_a):
-                        game.next_direction = (-1, 0)
-                    elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                        game.next_direction = (1, 0)
-                    elif event.key == pygame.K_SPACE:
-                        paused = not paused
-                    elif event.key == pygame.K_m:
-                        game.state = "menu"
-                        paused = False
-                    elif event.key == pygame.K_q:
-                        running = False
+                    game.handle_input(event.key)
+                elif event.key == pygame.K_m:
+                    game.state = "playing"
+                    game.reset()
+                elif event.key == pygame.K_q:
+                    running = False
 
-                elif game.state == "gameover":
-                    if event.key == pygame.K_r:
-                        game.reset_game()
-                    elif event.key == pygame.K_m:
-                        game.state = "menu"
-                    elif event.key == pygame.K_q:
-                        running = False
+        if game.state == "playing":
+            game.update()
 
-        if game.state == "menu":
-            game.draw_menu()
-        elif game.state == "playing":
-            if not paused:
-                game.update()
-            game.draw_background()
-            game.draw_grid()
-            game.draw_obstacles()
-            game.draw_food()
-            game.draw_snake()
-            game.draw_particles()
-            game.draw_hud()
-
-            if paused:
-                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
-                screen.blit(overlay, (0, 0))
-                pause_text = font_title.render("PAUSED", True, WORLDS[game.world_index]["accent"])
-                screen.blit(pause_text, (WIDTH // 2 - 150, HEIGHT // 2 - 30))
-
-        elif game.state == "gameover":
-            game.draw_background()
-            game.draw_grid()
-            game.draw_obstacles()
-            game.draw_food()
-            game.draw_snake()
-            game.draw_particles()
-            game.draw_hud()
-            game.draw_gameover()
-
+        game.draw()
         pygame.display.flip()
 
     pygame.quit()
